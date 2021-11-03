@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import sys
 import csv
 from datetime import datetime
 from collections import defaultdict
@@ -10,7 +11,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("data", metavar="csv", type=str, help="CSV file with the flights data")
 parser.add_argument("origin", metavar="origin", type=str, help="origin airport code")
 parser.add_argument("destination", metavar="destination", type=str, help="destination airport code")
-parser.add_argument("--bags", default=0, type=int, help="number of requested bags")
+parser.add_argument("--bags", default=0, type=int,
+                    help="number of requested bags (if negative, turned to 0)")
 parser.add_argument("--return", dest="ret", action='store_true', help="return flight")
 parser.add_argument("--days_in_destination",dest="days", default=1, type=int, choices=range(1,32),
                     help="minimal time between return and departure in days")
@@ -19,12 +21,13 @@ class FlightEncoder(json.JSONEncoder):
     """Tells JSON how to serialize Flight class instance"""
     def default(self, o):
         if isinstance(o, Flight):
+            datetime_format = "%Y-%m-%dT%H:%M:%S"
             json_flight = {}
             json_flight["flight_no"] = o.flight_no
             json_flight["origin"] = o.origin
             json_flight["destination"] = o.destination
-            json_flight["departure"] = datetime.strftime(o.departure,"%Y-%m-%dT%H:%M:%S")
-            json_flight["arrival"] = datetime.strftime(o.arrival,"%Y-%m-%dT%H:%M:%S")
+            json_flight["departure"] = datetime.strftime(o.departure, datetime_format)
+            json_flight["arrival"] = datetime.strftime(o.arrival, datetime_format)
             json_flight["base_price"] = o.base_price
             json_flight["bag_price"] = o.bag_price
             json_flight["bags_allowed"] = o.bags_allowed
@@ -80,14 +83,29 @@ class Flight:
         bags_allowed : str
             number of allowed pieces of baggage for the flight
         """
+        datetime_format = "%Y-%m-%dT%H:%M:%S"
         self.flight_no = flight_no
         self.origin = origin
         self.destination = destination
-        self.departure = datetime.strptime(departure,"%Y-%m-%dT%H:%M:%S")
-        self.arrival = datetime.strptime(arrival,"%Y-%m-%dT%H:%M:%S")
-        self.base_price = float(base_price)
-        self.bag_price = float(bag_price)
-        self.bags_allowed = int(bags_allowed)
+        try:
+            self.departure = datetime.strptime(departure, datetime_format)
+            self.arrival = datetime.strptime(arrival, datetime_format)
+        except:
+            print("Error: date in provided csv file has incorrect format or contains incorrect values (expected: "+datetime_format+")")
+            sys.exit(1)
+        try:
+            self.base_price = float(base_price)
+            self.bag_price = float(bag_price)
+        except:
+            print("Error: prices (base_price, bag_price) should be float, got string")
+            sys.exit(1)
+        try:
+            self.bags_allowed = int(bags_allowed)
+            if self.bags_allowed < 0:
+               raise
+        except:
+            print("Error: bags_allowed should be non-negative int")
+            sys.exit(1)
 
 class Data:
     """
@@ -264,16 +282,19 @@ def load_data(file):
     Data : Data object with csv parsed
     """
     data = Data()
+    try:
+        with open(file, newline='', encoding="utf-8") as csvfile:
+            flights_reader = csv.reader(csvfile)
+            next(flights_reader) # skip header of csv
 
-    with open(file, newline='', encoding="utf-8") as csvfile:
-        flights_reader = csv.reader(csvfile)
-        next(flights_reader) # skip header of csv
-
-        for row in flights_reader:
-            flight = Flight(*row)
-            data.add_airport(flight.origin)
-            data.add_airport(flight.destination)
-            data.add_flight(flight)
+            for row in flights_reader:
+                flight = Flight(*row)
+                data.add_airport(flight.origin)
+                data.add_airport(flight.destination)
+                data.add_flight(flight)
+    except:
+        print("Error: csv not parsed correctly, aborting...")
+        sys.exit(1)
 
     return data
 
@@ -352,4 +373,7 @@ def main(args: argparse.Namespace):
 
 if __name__ == "__main__":
     args = parser.parse_args()
+    # if negative number of mags inserted, make it 0
+    if args.bags < 0:
+        args.bags = 0
     main(args)

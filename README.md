@@ -26,6 +26,7 @@ Usage example:
 `
 python -m solution .\example_csv\example0.csv RFZ WIW --bags=-3 --return --days_in_destination=2
 `
+
 Output:
 ```
 [
